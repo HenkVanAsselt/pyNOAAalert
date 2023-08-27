@@ -4,9 +4,13 @@
 ## @file convert.py
 ## @brief Convert n2yno jason data to list of sattellite passes
 
+# pylint: disable=logging-fstring-interpolation, line-too-long, invalid-name
+
 import datetime
 import json
 import logging
+from collections import namedtuple
+from operator import attrgetter  # to sort a list of named tuples
 
 # Use the following json files as sources.
 # They ar created in 'get_passed_from_n2yo.py'
@@ -15,8 +19,10 @@ NOAA15_FILE = basepath + "NOAA 15.json"
 NOAA18_FILE = basepath + "NOAA 18.json"
 NOAA19_FILE = basepath + "NOAA 19.json"
 
+Pass = namedtuple("Pass", "satname aos los")
 
-def get_passlist_from_json(noaa_json: dict) -> list[tuple[datetime, datetime]]:
+
+def get_passlist_from_json(noaa_json: dict) -> list[Pass]:
     """Get  the passlist from json data
 
     :param noaa_json: json string with satellite data
@@ -27,7 +33,7 @@ def get_passlist_from_json(noaa_json: dict) -> list[tuple[datetime, datetime]]:
     satname = noaa_json["info"]["satname"]
     logging.debug(f"Extracting upcoming {satname} {noaa_passes} passes")
 
-    start_and_stop_times = []  # list of tuples of start and stop times
+    passes = []  # list of tuples of satname, start and end times
     sat_passes = noaa_json["passes"]
 
     for sat_pass in sat_passes:
@@ -40,14 +46,14 @@ def get_passlist_from_json(noaa_json: dict) -> list[tuple[datetime, datetime]]:
         local_end_time = datetime.datetime.fromtimestamp(int(unix_end_time))
         logging.debug(f"localtime start: {local_start_time}, end: {local_end_time}")
 
-        # start_times.append(local_start_time)
-        # stop_times.append(local_end_time)
-        start_and_stop_times.append((local_start_time, local_end_time))
+        # Fill in the named tuple
+        pass_tuple = Pass(satname, local_start_time, local_end_time)
+        passes.append(pass_tuple)
 
-    return start_and_stop_times
+    return passes
 
 
-def get_passlist_from_file(json_file: str) -> list[tuple[datetime, datetime]]:
+def get_passlist_from_file(json_file: str) -> list[Pass]:
     """Get  the passlist from a file with json data
 
     :param json_file: path to the json file to process
@@ -56,7 +62,7 @@ def get_passlist_from_file(json_file: str) -> list[tuple[datetime, datetime]]:
     Uses `get_passlist_from_json` for the actual conversion
     """
 
-    with open(json_file, "r") as f:
+    with open(json_file, "r", encoding="utf-8") as f:
         noaa_str = f.read()
         noaa_json = json.loads(noaa_str)
 
@@ -76,28 +82,28 @@ def to_passes_time_per_sattellite() -> None:
 
     outfile_name = basepath + "passes_time_per_sattellite.txt"
 
-    with open(outfile_name, "w") as outfile:
-        aos_and_los_times = get_passlist_from_file(NOAA15_FILE)
+    with open(outfile_name, "w", encoding="utf-8") as outfile:
+        passlist = get_passlist_from_file(NOAA15_FILE)
         print("NOAA15", file=outfile)
-        for aos_los in aos_and_los_times:
-            aos = str(aos_los[0])       # Convert aos datetime to a string
-            los = str(aos_los[1])       # Convert los datetime to a string
+        for sat_pass in passlist:
+            aos = str(sat_pass.aos)  # Convert aos datetime to a string
+            los = str(sat_pass.los)  # Convert los datetime to a string
             print(f"{aos} ... {los}", end="\n", file=outfile)
         print("", file=outfile)
 
-        aos_and_los_times = get_passlist_from_file(NOAA18_FILE)
+        passlist = get_passlist_from_file(NOAA18_FILE)
         print("NOAA18", file=outfile)
-        for aos_los in aos_and_los_times:
-            aos = str(aos_los[0])
-            los = str(aos_los[1])
+        for sat_pass in passlist:
+            aos = str(sat_pass.aos)  # Convert aos datetime to a string
+            los = str(sat_pass.los)  # Convert los datetime to a string
             print(f"{aos} ... {los}", end="\n", file=outfile)
         print("", file=outfile)
 
-        aos_and_los_times = get_passlist_from_file(NOAA19_FILE)
+        passlist = get_passlist_from_file(NOAA19_FILE)
         print("NOAA19", file=outfile)
-        for aos_los in aos_and_los_times:
-            aos = str(aos_los[0])
-            los = str(aos_los[1])
+        for sat_pass in passlist:
+            aos = str(sat_pass.aos)  # Convert aos datetime to a string
+            los = str(sat_pass.los)  # Convert los datetime to a string
             print(f"{aos} ... {los}", end="\n", file=outfile)
         print("", file=outfile)
 
@@ -113,37 +119,29 @@ def to_passes_time_in_one_file() -> None:
         LOS = Loss of Signal ( or Satellite).LOS is the time that a satellite passes below the observer’s horizon.
     """
 
-    aos_and_los_times_15 = get_passlist_from_file(NOAA15_FILE)
-    aos_and_los_times_18 = get_passlist_from_file(NOAA18_FILE)
-    aos_and_los_times_19 = get_passlist_from_file(NOAA19_FILE)
+    pass_list = []
+    passlist_15 = get_passlist_from_file(NOAA15_FILE)
+    passlist_18 = get_passlist_from_file(NOAA18_FILE)
+    passlist_19 = get_passlist_from_file(NOAA19_FILE)
 
-    # Extend a dictionary with a.update(b)
+    logging.debug(passlist_15)
 
-    print(aos_and_los_times_15)
+    pass_list.extend(passlist_15)
+    pass_list.extend(passlist_18)
+    pass_list.extend(passlist_19)
 
-    satname = "NOAA 15"
-    new_list = [(satname, aos, los) for aos,los in aos_and_los_times_15 ]
+    logging.debug(pass_list)
 
-
-    satname = "NOAA 18"
-    new_list.extend([(satname, aos, los) for aos,los in aos_and_los_times_18 ])
-
-    satname = "NOAA 19"
-    new_list.extend([(satname, aos, los) for aos,los in aos_and_los_times_19 ])
-
-    print(new_list)
-
-    sorted_list = sorted(new_list, key=lambda x: (x[2], x[1]))
+    # Sort the list based on the AOS time (Acquisition of Signal)
+    sorted_list = sorted(pass_list, key=attrgetter('aos'))
 
     print(sorted_list)
 
     outfile_name = basepath + "all_passes_times.txt"
-    with open(outfile_name, "w") as outfile:
+    with open(outfile_name, "w", encoding="utf-8") as outfile:
         for t in sorted_list:
-            sat_name = t[0]
-            aos = t[1]
-            los = t[2]
-            outfile.write(f"{aos}...{los} ({sat_name})\n")
+            outfile.write(f"{t.aos}...{t.los} ({t.satname})\n")
+
 
 def main() -> None:
     """main function"""
